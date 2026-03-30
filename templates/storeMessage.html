@@ -1,0 +1,154 @@
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <title>Message Storage DApp</title>
+    <!-- Import Ethers.js v6 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Message Board</h1>
+        <button id="connectBtn">Connect Wallet</button>
+        <p>Wallet Status: <strong id="status">Disconnected</strong></p>
+        
+        <hr>
+        
+        <h3>Current Message:</h3>
+        <div class="message-box">
+            <span id="displayMessage">No message found yet...</span>
+        </div>
+        <button id="getBtn">Refresh Message</button>
+
+        <hr>
+
+        <h3>Save a New Message:</h3>
+        <input type="text" id="newMessageInput" placeholder="Type your message here..." disabled>
+        <button id="setBtn" disabled>Save to Blockchain</button>
+
+        <form action="/main" method="post">
+            <input type="submit" value="Main">
+        </form>
+    </div>
+
+    <script>
+        // Replace with your deployed contract address from Remix
+        const contractAddress = "0x8afc47e0dc7c0298dff602f501654095d71f7447"; 
+
+        // ABI for the MessageBoard contract
+        const contractABI = [
+        {
+            "inputs": [],
+            "name": "getMessage",
+            "outputs": [
+                {
+                    "internalType": "string",
+                    "name": "",
+                    "type": "string"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                {
+                    "internalType": "string",
+                    "name": "_newMessage",
+                    "type": "string"
+                }
+            ],
+            "name": "setMessage",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"
+        }];
+
+        let provider;
+        let signer;
+        let contract;
+
+        const connectBtn = document.getElementById('connectBtn');
+        const getBtn = document.getElementById('getBtn');
+        const setBtn = document.getElementById('setBtn');
+        const statusText = document.getElementById('status');
+        const displayMessage = document.getElementById('displayMessage');
+        const newMessageInput = document.getElementById('newMessageInput');
+
+        // 1. Connect to MetaMask
+        connectBtn.addEventListener('click', async () => {
+            if (window.ethereum) {
+                try {
+                    provider = new ethers.BrowserProvider(window.ethereum);
+                    signer = await provider.getSigner();
+                    contract = new ethers.Contract(contractAddress, contractABI, signer);
+
+                    const address = await signer.getAddress();
+                    statusText.innerText = `Connected: ${address.substring(0,6)}...${address.substring(38)}`;
+                    
+                    // Enable inputs now that we are connected
+                    newMessageInput.disabled = false;
+                    setBtn.disabled = false;
+                    
+                    await fetchMessage();
+                } catch (error) {
+                    console.error("Connection failed:", error);
+                }
+            } else {
+                alert("Please install MetaMask!");
+            }
+        });
+
+        // 2. Read the message from the blockchain
+        async function fetchMessage() {
+            if (!contract) return;
+            try {
+                displayMessage.innerText = "Loading...";
+                const currentMsg = await contract.getMessage();
+                displayMessage.innerText = currentMsg || "No message stored yet.";
+            } catch (error) {
+                console.error("Error fetching message:", error);
+                displayMessage.innerText = "Error fetching message.";
+            }
+        }
+
+        getBtn.addEventListener('click', fetchMessage);
+
+        // 3. Write a new message to the blockchain
+        setBtn.addEventListener('click', async () => {
+            const newText = newMessageInput.value.trim();
+            if (!newText) {
+                alert("Please enter a message!");
+                return;
+            }
+
+            try {
+                statusText.innerText = "Transaction pending... Please approve in your wallet.";
+                setBtn.disabled = true;
+
+                // Send the transaction containing the new string
+                const tx = await contract.setMessage(newText);
+                
+                // Wait for the block to be mined
+                await tx.wait(); 
+                
+                statusText.innerText = "Transaction confirmed!";
+                newMessageInput.value = ""; // Clear input
+                await fetchMessage(); // Refresh UI
+                
+                // Reset status message
+                setTimeout(async () => {
+                    const address = await signer.getAddress();
+                    statusText.innerText = `Connected: ${address.substring(0,6)}...${address.substring(38)}`;
+                    setBtn.disabled = false;
+                }, 3000);
+
+            } catch (error) {
+                console.error("Transaction failed:", error);
+                statusText.innerText = "Transaction failed or rejected!";
+                setBtn.disabled = false;
+            }
+        });
+    </script>
+    <script src="app.js"></script>
+</body>
